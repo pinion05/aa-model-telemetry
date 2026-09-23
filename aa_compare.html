@@ -143,10 +143,10 @@ footer a{color:var(--accent)}
 
 <div class="sec">
   <div class="sec-head"><h2>스펙 지도</h2></div>
-  <div class="lead">다섯 축 모두 <b>전체 평가 대상 모델 기준 백분위</b>로 맞춰 놓았다. 바깥으로 나가면 좋아지는 방향이라 폴리곤이 크면 클수록 유리하고, 찌그러진 방향이 그 모델의 약점이다.</div>
+  <div class="lead">네 축 모두 <b>전체 평가 대상 모델 기준 백분위</b>로 맞춰 놓았다. 바깥으로 나가면 좋아지는 방향이라 폴리곤이 크면 클수록 유리하고, 찌그러진 방향이 그 모델의 약점이다.</div>
   <div class="duo">
     <div class="plot">
-      <h3>레이더: 다섯 지표 백분위</h3>
+      <h3>레이더: 네 지표 백분위</h3>
       <div class="unit">바깥 = 상위 · 별표 축은 낮을수록 좋음</div>
       <div id="svgRadar"></div>
       <div class="pnote" id="radarNote"></div>
@@ -161,7 +161,7 @@ footer a{color:var(--accent)}
 
 <div class="sec">
   <div class="sec-head"><h2>지표별 막대</h2></div>
-  <div class="lead">지표마다 선택한 모델을 정렬해 놓았고, 가장 좋은 값은 붉게 표시했다. 토큰 효율은 여기서 새로 계산한 파생값이다.</div>
+  <div class="lead">지표마다 선택한 모델을 정렬해 놓았고, 가장 좋은 값은 붉게 표시했다.</div>
   <div class="plot">
     <div id="bars"></div>
   </div>
@@ -180,7 +180,7 @@ footer a{color:var(--accent)}
 
 <footer>
   데이터: artificialanalysis.ai Models 페이지 매니페스트(2026-09-23 수집) · GLM-5.3 (max) 속도/시간은 사용자 실측(220 tok/s) 보정.<br>
-  백분위는 지원 종료 제외 모델 가운데 해당 지표가 공개된 모델 기준. 토큰 효율 = 엔지니어링 ÷(토큰/작업)×1000.<br>
+  백분위는 지원 종료 제외 모델 가운데 해당 지표가 공개된 모델 기준.<br>
   <a href="index.html">원시 뷰어</a> · <a href="aa_insights.html">고수준 인사이트</a>
 </footer>
 
@@ -193,10 +193,10 @@ const $=s=>document.querySelector(s);
 const LIVE=DATA.filter(m=>!m.dep||!m.deprecated);
 const K={
   eng:['engineering_score','엔지니어링',1], ii:['intelligence_index','지능 지수',1],
-  tokens:['tokens_per_task_total','토큰/작업',-1], cost:['cost_per_task_usd','비용/작업',-1],
+  cost:['cost_per_task_usd','비용/작업',-1],
   time:['time_per_task_s','시간/작업',-1],
 };
-const AXES=['eng','ii','tokens','cost','time'];
+const AXES=['eng','ii','cost','time'];
 const DEFAULT=['claude-opus-5-5-xhigh','gpt-6-astra-xhigh','grok-4-7','glm-5-3','granite-4-2-3b'];
 let sel=[];   // model objects
 
@@ -207,7 +207,6 @@ const fmt={
   tokens:v=>v==null?null:Math.round(v).toLocaleString(),
   cost:v=>v==null?null:(v>=1?'$'+v.toFixed(2):'$'+v.toFixed(3)),
   time:v=>v==null?null:(v>=600?Math.round(v/60)+'분'+Math.round(v%60)+'s':Math.round(v)+'s'),
-  val:v=>v==null?null:v.toFixed(1), te:v=>v==null?null:v.toFixed(1),
 };
 function val(m,k){return m[K[k][0]]}
 function pctOf(k,v){
@@ -354,26 +353,17 @@ function drawVerdict(){
         ${fr?'이 조합에서 밀리는 축이 없다':domBy[i].map(n=>n.length>28?n.slice(0,27)+'…':n).join(', ')+'에게 전 축에서 밀린다'}
       </div></div>`;
   });
-  html+=`<div class="pnote">프론티어 <b>${frontier.length}개</b> · 지배 판정은 다섯 축 백분위로 한다(같거나 좋고 하나라도 엄격히 좋으면 지배)</div>`;
+  html+=`<div class="pnote">프론티어 <b>${frontier.length}개</b> · 지배 판정은 네 축 백분위로 한다(같거나 좋고 하나라도 엄격히 좋으면 지배)</div>`;
   $('#verdict').innerHTML=html;
 }
 
 /* ---------- bars ---------- */
-function derived(m){
-  const eng=m.engineering_score, pr=m.price_blended_3to1_usd_per_m, tk=m.tokens_per_task_total;
-  return {
-    value:(eng!=null&&pr>0)?eng/pr:null,
-    te:(eng!=null&&tk>0)?eng/tk*1000:null,
-  };
-}
 function drawBars(){
   const rowsDef=[
     ['eng','엔지니어링 점수',m=>val(m,'eng'),v=>fmt.eng(v),1],
     ['ii','지능 지수',m=>val(m,'ii'),v=>fmt.ii(v),1],
-    ['tokens','작업당 총 토큰',m=>val(m,'tokens'),v=>fmt.tokens(v),-1],
     ['cost','작업당 비용',m=>val(m,'cost'),v=>fmt.cost(v),-1],
     ['time','작업당 시간',m=>val(m,'time'),v=>fmt.time(v),-1],
-    ['te','토큰 효율 (eng per 1k tok)',m=>derived(m).te,v=>v.toFixed(1),1],
   ];
   const W=940,mL=10,mR=130;
   let html='';
@@ -408,10 +398,8 @@ function drawTable(){
   const rowsDef=[
     ['엔지니어링',m=>fmt.eng(val(m,'eng')),1],
     ['지능 지수',m=>fmt.ii(val(m,'ii')),1],
-    ['토큰/작업',m=>fmt.tokens(val(m,'tokens')),-1],
     ['작업당 비용',m=>fmt.cost(val(m,'cost')),-1],
     ['시간/작업',m=>fmt.time(val(m,'time')),-1],
-    ['토큰 효율',m=>{const v=derived(m).te;return v==null?null:v.toFixed(1)},1],
     ['출시',m=>m.release_date||'—',0],
     ['오픈 웨이트',m=>m.is_open_weights?'yes':'no',0],
   ];
