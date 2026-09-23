@@ -85,6 +85,10 @@ h1 .tick{color:var(--marker)}
 .sec-head h2{font-size:17px;font-weight:700;letter-spacing:-0.01em}
 .sec-head .desc{font-size:12.5px;color:var(--ink-soft)}
 .axisbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.axisbar select{font-family:'Space Grotesk',sans-serif;font-size:12.5px;color:var(--ink);
+  border:1px solid var(--line);border-radius:7px;background:var(--card);padding:5px 8px;cursor:pointer;outline:none}
+.axisbar select:focus{border-color:var(--ink)}
+.axisbar .grp{display:inline-flex;gap:6px;align-items:center}
 .axislab{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--card)}
 .seg button{border:none;background:none;padding:5px 11px;font-size:12px;font-family:'Space Grotesk',sans-serif;
@@ -192,7 +196,7 @@ a{color:var(--accent)}
   <div class="sec-head">
     <div>
       <h2>주요 지표 산점도</h2>
-      <div class="desc">점 색은 제작사, 점 크기는 작업당 총 토큰이고, 점선은 효율 프론티어, 파란 실선은 상위 MA(3)에 바이어스 b(x)를 더한 상단 추세선이다. b(x)는 구간최댓값과 MA의 차이를 평활한 함수, 얇은 선은 바이어스 적용 전 MA다.</div>
+      <div class="desc">점 색과 크기는 선택기에서 지정하며(수치 지표를 고르면 연색에서 붉은색으로, 작게에서 크게로 변한다), 점선은 효율 프론티어, 파란 실선은 상위 MA(3)에 바이어스 b(x)를 더한 상단 추세선이다. b(x)는 구간최댓값과 MA의 차이를 평활한 함수, 얇은 선은 바이어스 적용 전 MA다.</div>
     </div>
     <div class="axisbar">
       <span class="axislab">X축</span>
@@ -208,6 +212,8 @@ a{color:var(--accent)}
         <button data-v="eng" class="on">엔지니어링</button>
         <button data-v="ii">지능 지수</button>
       </div>
+      <span class="grp"><span class="axislab">색</span><select id="selColor"></select></span>
+      <span class="grp"><span class="axislab">크기</span><select id="selSize"></select></span>
       <label class="tog"><input type="checkbox" id="togLog" checked>log X</label>
       <label class="tog"><input type="checkbox" id="togMA" checked>상위 MA</label>
       <label class="tog"><input type="checkbox" id="togFR" checked>프론티어</label>
@@ -300,7 +306,7 @@ const AA = "https://artificialanalysis.ai";
 
 /* ---------- state ---------- */
 const state = {
-  x:'price', y:'eng', logX:true, ma:true, fr:true,
+  x:'price', y:'eng', logX:true, ma:true, fr:true, colorBy:'creator', sizeBy:'tokens',
   creators:new Set(),           // empty = all
   dep:false, ow:false, q:'',
   sortKey:'engineering_score', sortDir:-1
@@ -335,6 +341,34 @@ function filtered(){
     if(state.q && !(m.name.toLowerCase().includes(state.q)||m.creator.toLowerCase().includes(state.q))) return false;
     return true;
   });
+}
+const LOGM=new Set(['price','speed','tokens','time','cost']);
+function ramp3(t){
+  t=Math.min(1,Math.max(0,t||0));
+  const st=[[185,191,221],[31,79,216],[200,55,29]];
+  let a,b,f2;
+  if(t<0.5){a=st[0];b=st[1];f2=t*2}else{a=st[1];b=st[2];f2=t*2-1}
+  return `rgb(${a.map((x,j)=>Math.round(x+(b[j]-x)*f2)).join(',')})`;
+}
+function mkColorOf(key, pts){
+  if(!key||key==='creator') return m=>m.creator_color||'#1A2340';
+  if(key==='none') return ()=>'#5A6178';
+  const ck=KEYS[key].k, lg=LOGM.has(key);
+  const vals=pts.map(p=>p.d[ck]).filter(v=>v!=null&&(!lg||v>0));
+  if(!vals.length||Math.min(...vals)===Math.max(...vals)) return ()=>ramp3(0.5);
+  const lo=Math.min(...vals),hi=Math.max(...vals);
+  const fv=v=>lg?Math.log10(v):v;
+  return m=>{const v=m[ck];if(v==null||(lg&&v<=0))return '#C9CBD4';return ramp3((fv(v)-fv(lo))/(fv(hi)-fv(lo)))};
+}
+function mkSizeOf(key, pts){
+  if(!key) key='tokens';
+  if(key==='fixed') return ()=>4.4;
+  const ck=KEYS[key].k, lg=LOGM.has(key);
+  const vals=pts.map(p=>p.d[ck]).filter(v=>v!=null&&(!lg||v>0));
+  if(!vals.length||Math.min(...vals)===Math.max(...vals)) return ()=>4.4;
+  const lo=Math.min(...vals),hi=Math.max(...vals);
+  const fv=v=>lg?Math.log10(v):v;
+  return m=>{const v=m[ck];if(v==null||(lg&&v<=0))return 3.2;return 3+((fv(v)-fv(lo))/(fv(hi)-fv(lo)))*7};
 }
 function hasXY(m, xk, yk){
   let a=m[KEYS[xk].k], b=m[KEYS[yk].k];
@@ -458,21 +492,13 @@ function scatter(host, models, xk, yk, opts={}){
     }
   }
 
-  // points: size by tokens/task
-  const toks = pts.map(p=>p.d.tokens_per_task_total).filter(v=>v!=null&&v>0);
-  const tmin=toks.length?Math.min(...toks):0, tmax=toks.length?Math.max(...toks):1;
-  const rOf=d=>{
-    const t=d.tokens_per_task_total;
-    if(t==null||tmax===tmin) return 4.4;
-    const s=(Math.log10(t)-Math.log10(tmin))/(Math.log10(tmax)-Math.log10(tmin)||1);
-    return 3+s*7;
-  };
+  // points: color & size from selectors
   const dim = state.creators.size>0;
+  const colorOf = mkColorOf(opts.colorBy, pts);
+  const rOf = mkSizeOf(opts.sizeBy, pts);
   let i=0;
   for(const p of pts){
-    const c=p.d.creator_color||'#1A2340';
-    const id=p.d.id;
-    g+=`<circle class="pt" data-id="${id}" cx="${X(p.x)}" cy="${Y(p.y)}" r="${rOf(p.d)}" fill="${c}" opacity="${dim?0.92:0.88}" ${opts.stagger?`style="animation:pin .5s ${Math.min(i*2.2,900)}ms both"`:''}/>`;
+    g+=`<circle class="pt" data-id="${p.d.id}" cx="${X(p.x)}" cy="${Y(p.y)}" r="${rOf(p.d).toFixed(2)}" fill="${colorOf(p.d)}" opacity="${dim?0.92:0.88}" ${opts.stagger?`style="animation:pin .5s ${Math.min(i*2.2,900)}ms both"`:''}/>`;
     i++;
   }
 
@@ -623,7 +649,9 @@ function renderAll(){
   renderKpis(f);
   $('#mainTitle').textContent=`${KEYS[state.x].short} × ${KEYS[state.y].short}, ${f.length.toLocaleString()}개 모델`;
   $('#mainUnit').textContent='점 색 = 제작사 · 점 크기 ∝ 작업당 총 토큰(log)';
-  scatter($('#mainSvgHost'), f, state.x, state.y, {pareto:state.fr, ma:state.ma, log:state.logX, paretoNote:'#mainPareto', stagger:false, h:480});
+  const MAPL={creator:'제작사',none:'단색',eng:'엔지니어링',ii:'지능 지수',tokens:'토큰/작업',speed:'속도',price:'가격',cost:'비용/작업',time:'시간/작업',fixed:'고정'};
+  $('#mainUnit').textContent=`점 색 = ${MAPL[state.colorBy]}${state.colorBy!=='creator'&&state.colorBy!=='none'?' (연색→붉은색=값 상승)':''} · 점 크기 = ${MAPL[state.sizeBy]}${state.sizeBy!=='fixed'?' (클수록 값 상승)':''}`;
+  scatter($('#mainSvgHost'), f, state.x, state.y, {pareto:state.fr, ma:state.ma, log:state.logX, paretoNote:'#mainPareto', stagger:false, h:480, colorBy:state.colorBy, sizeBy:state.sizeBy});
   scatter($('#svgSpeed'), f, 'speed', 'eng', {pareto:false, log:true, h:380});
   scatter($('#svgTokens'), f, 'tokens', 'eng', {pareto:false, log:true, h:380});
   draw3();
@@ -819,6 +847,16 @@ if(matchMedia('(prefers-reduced-motion: reduce)').matches)$('#togSpin3').disable
 fillSel3();
 
 /* ---------- wiring ---------- */
+const MAP_OPTS=[['creator','제작사'],['none','단색'],['eng','엔지니어링'],['ii','지능 지수'],['tokens','토큰/작업'],['speed','속도'],['price','가격'],['cost','비용/작업'],['time','시간/작업']];
+const SIZE_OPTS=[['tokens','토큰/작업'],['fixed','고정'],['eng','엔지니어링'],['ii','지능 지수'],['speed','속도'],['price','가격'],['cost','비용/작업'],['time','시간/작업']];
+function fillMapSelectors(){
+  const sc=$('#selColor'), ss=$('#selSize');
+  sc.innerHTML=MAP_OPTS.map(([v,l])=>`<option value="${v}" ${state.colorBy===v?'selected':''}>${l}</option>`).join('');
+  ss.innerHTML=SIZE_OPTS.map(([v,l])=>`<option value="${v}" ${state.sizeBy===v?'selected':''}>${l}</option>`).join('');
+  sc.onchange=()=>{state.colorBy=sc.value;renderAll()};
+  ss.onchange=()=>{state.sizeBy=ss.value;renderAll()};
+}
+fillMapSelectors();
 document.querySelectorAll('#segX button').forEach(b=>b.onclick=()=>{
   state.x=b.dataset.v;
   document.querySelectorAll('#segX button').forEach(x=>x.classList.toggle('on',x===b));
