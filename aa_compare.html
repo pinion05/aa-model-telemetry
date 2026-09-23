@@ -101,6 +101,7 @@ tbody td{padding:8px 12px;border-bottom:1px solid var(--grid-minor);white-space:
 tbody td:first-child{text-align:left;font-family:'Space Grotesk',sans-serif;color:var(--ink-soft);font-weight:500}
 tbody td.best{color:var(--marker);font-weight:600;background:rgba(200,55,29,.05)}
 tbody td.miss{color:var(--ink-faint)}
+tbody td .pc{display:block;font-size:9px;color:var(--ink-faint);margin-top:1px;letter-spacing:.03em}
 .badge{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1.5px 6px;border-radius:4px;letter-spacing:.05em;vertical-align:1px;margin-left:6px}
 .badge.fr{background:#F6E3DF;color:var(--marker)}
 .badge.dom{background:#EAEAF2;color:var(--ink-soft)}
@@ -145,11 +146,11 @@ footer a{color:var(--accent)}
 
 <div class="sec">
   <div class="sec-head"><h2>스펙 지도</h2></div>
-  <div class="lead">네 축 모두 <b>전체 평가 대상 모델 기준 백분위</b>로 맞춰 놓았다. 바깥으로 나가면 좋아지는 방향이라 폴리곤이 크면 클수록 유리하고, 찌그러진 방향이 그 모델의 약점이다.</div>
+  <div class="lead">네 축 모두 <b>전체 평가 대상 모델 기준 백분위</b>로 맞춰 놓았다. 바깥으로 나가면 좋아지는 방향이라 폴리곤이 크면 클수록 유리하고, 찌그러진 방향이 그 모델의 약점이다. 회색 띠는 전체 모델이 몰려 있는 중간 50%라서, 꼭짓점이 띠 밖으로 나간 축은 집단에서 크게 벗어난 강점이나 약점이다.</div>
   <div class="duo">
     <div class="plot">
       <h3>레이더: 네 지표 백분위</h3>
-      <div class="unit">바깥 = 상위 · 별표 축은 낮을수록 좋음</div>
+      <div class="unit">바깥 = 상위 · 회색 띠 = 전체 모델의 중간 50% · 점선 = 전체 중앙값 · 별표 축은 낮을수록 좋음</div>
       <div id="svgRadar"></div>
       <div class="pnote" id="radarNote"></div>
     </div>
@@ -163,7 +164,7 @@ footer a{color:var(--accent)}
 
 <div class="sec">
   <div class="sec-head"><h2>지표별 막대</h2></div>
-  <div class="lead">지표마다 선택한 모델을 정렬해 놓았고, 가장 좋은 값은 붉게 표시했다.</div>
+  <div class="lead">지표마다 선택한 모델을 정렬해 놓았고, 가장 좋은 값은 붉게 표시했다. 회색 띠와 점선은 전체 모델의 중간 50%와 중앙값이라, 막대가 띠를 벗어나면 집단에서 크게 벗어난 값이다.</div>
   <div class="plot">
     <div id="bars"></div>
   </div>
@@ -171,7 +172,7 @@ footer a{color:var(--accent)}
 
 <div class="sec">
   <div class="sec-head"><h2>스펙 표</h2></div>
-  <div class="lead">행마다 최고 셀을 붉게 칠했다. 미공개 값은 그냥 비워 둔다.</div>
+  <div class="lead">행마다 최고 셀을 붉게 칠했고, 값 아래 작은 표기는 전체 모델 기준 위치(낮을수록 좋은 지표는 뒤집어 계산)다. 미공개 값은 그냥 비워 둔다.</div>
   <div class="tblwrap">
     <table id="tbl">
       <thead><tr id="thead"></tr></thead>
@@ -284,6 +285,13 @@ function drawRadar(){
   const ang=i=>-Math.PI/2+i*2*Math.PI/n;
   const px=(i,r)=>cx+Math.cos(ang(i))*r, py=(i,r)=>cy+Math.sin(ang(i))*r;
   let g='';
+  // 모집단 분포 밴드: 축이 백분위라 링 25/50/75가 곧 전체 모델의 사분위 경계다
+  const polyR=f=>AXES.map((_,i)=>px(i,R*f)+','+py(i,R*f)).join(' ');
+  g+=`<polygon points="${polyR(0.75)} ${polyR(0.25).split(' ').reverse().join(' ')}" fill="rgba(26,35,64,0.05)" stroke="none"/>`;
+  g+=`<polygon points="${polyR(0.5)}" fill="none" stroke="#9AA0B0" stroke-width="1" stroke-dasharray="3 3"/>`;
+  g+=`<text class="axis-t" x="${cx+9}" y="${cy-R*0.86+3}" fill="#9AA0B0" font-size="8.5">상위 25%</text>`;
+  g+=`<text class="axis-t" x="${cx+9}" y="${cy-R*0.5+3}" fill="#9AA0B0" font-size="8.5">중간 50%</text>`;
+  g+=`<text class="axis-t" x="${cx+9}" y="${cy-R*0.16+3}" fill="#9AA0B0" font-size="8.5">하위 25%</text>`;
   [0.25,0.5,0.75,1].forEach(f=>{
     g+=`<polygon class="ring" points="${AXES.map((_,i)=>px(i,R*f)+','+py(i,R*f)).join(' ')}"/>`;
     g+=`<text class="axis-t" x="${px(0,R*f)+6}" y="${cy-R*f*0+3}" fill="var(--ink-faint)" font-size="8.5">${Math.round(f*100)}</text>`;
@@ -381,11 +389,21 @@ function drawBars(){
     if(!items.length)continue;
     items.sort((a,b)=>dir*(b.v-a.v));
     const best=items[0].v;
-    const max=Math.max(...items.map(x=>x.v));
+    // 모집단 통계(전체 평가 대상): 중앙값과 중간 50%
+    const pops=LIVE.map(m=>get(m)).filter(v=>v!=null).slice().sort((a,b)=>a-b);
+    const qv=p=>pops[Math.floor((pops.length-1)*p)];
+    const q1=pops.length?qv(0.25):null, med=pops.length?qv(0.5):null, q3=pops.length?qv(0.75):null;
+    const dom=Math.max(Math.max(...items.map(x=>x.v)),q3!=null?q3:0)||1;
+    const Xp=v=>Math.max(v/dom*(W-mL-mR),0);
     const h=Math.max(64,items.length*24+30);
     let g=`<g>`;
+    if(med!=null){
+      g+=`<rect x="${mL+Xp(q1)}" y="2" width="${Math.max(Xp(q3)-Xp(q1),1)}" height="${h-30}" fill="rgba(26,35,64,0.05)"/>`;
+      g+=`<line x1="${mL+Xp(med)}" y1="2" x2="${mL+Xp(med)}" y2="${h-28}" stroke="#9AA0B0" stroke-dasharray="3 3"/>`;
+      g+=`<text class="barlab" x="${mL+Xp(med)+5}" y="${h-16}" fill="#9AA0B0" font-size="9">전체 중앙값 ${fmtv(med)}</text>`;
+    }
     items.forEach((x,i)=>{
-      const y=8+i*24, w=Math.max(x.v/max*(W-mL-mR),2);
+      const y=8+i*24, w=Math.max(Xp(x.v),2);
       const isBest=x.v===best&&items.length>1;
       g+=`<rect class="bar" data-id="${x.m.id}" x="${mL}" y="${y}" width="${w}" height="16" rx="3"
           fill="${x.m.creator_color||'#1A2340'}" opacity="${isBest?1:.68}"/>`;
@@ -405,29 +423,28 @@ function drawBars(){
 /* ---------- table ---------- */
 function drawTable(){
   const rowsDef=[
-    ['엔지니어링',m=>fmt.eng(val(m,'eng')),1],
-    ['지능 지수',m=>fmt.ii(val(m,'ii')),1],
-    ['작업당 비용',m=>fmt.cost(val(m,'cost')),-1],
-    ['시간/작업',m=>fmt.time(val(m,'time')),-1],
-    ['출시',m=>m.release_date||'—',0],
-    ['오픈 웨이트',m=>m.is_open_weights?'yes':'no',0],
+    ['eng','엔지니어링'],['ii','지능 지수'],['cost','작업당 비용'],['time','시간/작업'],
   ];
   $('#thead').innerHTML='<th>지표</th>'+sel.map(m=>
     `<th><span class="cd" style="background:${m.creator_color||'#ccc'}"></span>${m.name.length>26?m.name.slice(0,25)+'…':m.name}</th>`).join('');
   let body='';
-  for(const [label,get,dir] of rowsDef){
-    const vals=sel.map(get);
+  for(const [k,label] of rowsDef){
+    const raws=sel.map(m=>val(m,k));
     let bestIdx=-1;
-    if(dir!==0){
-      const nums=vals.map(v=>v==null||v==='—'?null:parseFloat(String(v).replace(/[^0-9.\-]/g,'')));
-      const valid=nums.map((v,i)=>v!=null&&!isNaN(v)?i:-1).filter(i=>i>=0);
-      if(valid.length>1){
-        bestIdx=valid.reduce((bi,i)=>dir>0?(nums[i]>nums[bi]?i:bi):(nums[i]<nums[bi]?i:bi),valid[0]);
-      }
+    const valid=raws.map((v,i)=>v!=null?i:-1).filter(i=>i>=0);
+    if(valid.length>1){
+      const dir=K[k][2];
+      bestIdx=valid.reduce((bi,i)=>dir>0?(raws[i]>raws[bi]?i:bi):(raws[i]<raws[bi]?i:bi),valid[0]);
     }
-    body+=`<tr><td>${label}</td>`+vals.map((v,i)=>
-      `<td class="${i===bestIdx?'best':(v==null||v==='—'?'miss':'')}">${v==null?'미공개':(v===''?'-':v)}</td>`).join('')+'</tr>';
+    body+=`<tr><td>${label}</td>`+raws.map((v,i)=>{
+      if(v==null)return '<td class="miss">미공개</td>';
+      const p=pctOf(k,v);
+      const pc=p!=null?`<span class="pc">전체 상위 ${Math.max(1,Math.round((1-p)*100))}%</span>`:'';
+      return `<td class="${i===bestIdx?'best':''}">${fmt[k](v)}${pc}</td>`;
+    }).join('')+'</tr>';
   }
+  body+=`<tr><td>출시</td>`+sel.map(m=>`<td>${m.release_date||'미공개'}</td>`).join('')+'</tr>';
+  body+=`<tr><td>오픈 웨이트</td>`+sel.map(m=>`<td>${m.is_open_weights?'yes':'no'}</td>`).join('')+'</tr>';
   $('#tbody').innerHTML=body;
 }
 
