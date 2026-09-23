@@ -47,6 +47,8 @@ h1 .tick{color:var(--marker)}
 .results.show{display:block}
 .results .ritem{display:flex;justify-content:space-between;gap:12px;padding:7px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--grid-minor)}
 .results .ritem:hover{background:#F3F4EF}
+.results .ritem.added{opacity:.45}
+.results .rhint{position:sticky;bottom:0;background:var(--paper-deep);padding:6px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-faint);letter-spacing:.04em}
 .results .ritem .rc{font-size:11px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ink);background:#fff;
@@ -235,21 +237,28 @@ search.addEventListener('input',()=>{
   const hits=LIVE.filter(m=>m.name.toLowerCase().includes(q)||m.creator.toLowerCase().includes(q)).slice(0,40);
   results.innerHTML=hits.map(m=>{
     const chosen=sel.some(s=>s.id===m.id);
-    return `<div class="ritem" data-id="${m.id}" ${chosen?'style="opacity:.45"':''}>
+    return `<div class="ritem${chosen?' added':''}" data-id="${m.id}">
       <span><span class="chipdot" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${m.creator_color||'#ccc'};margin-right:7px"></span>${m.name}</span>
       <span class="rc">${m.creator}${m.engineering_score!=null?' · eng '+m.engineering_score.toFixed(1):''}${chosen?' · 추가됨':''}</span></div>`;
-  }).join('')||'<div class="ritem" style="cursor:default;color:var(--ink-faint)">검색 결과 없음</div>';
+  }).join('')+`<div class="rhint">클릭해서 계속 추가 (${sel.length}/8) · 바깥 클릭이나 Esc로 닫는다</div>`||'<div class="ritem" style="cursor:default;color:var(--ink-faint)">검색 결과 없음</div>';
   results.classList.add('show');
   results.querySelectorAll('.ritem[data-id]').forEach(el=>{
-    el.onclick=()=>{
-      if(sel.length>=8)return;
+    el.onclick=e=>{
+      e.stopPropagation();
       const m=DATA.find(x=>x.id===el.dataset.id);
-      if(m&&!sel.some(s=>s.id===m.id)) sel.push(m);
-      search.value='';results.classList.remove('show');renderAll();
+      if(!m||sel.some(s=>s.id===m.id))return;
+      if(sel.length>=8){$('#capnote').textContent='최대 8개까지 선택할 수 있다 (칩의 ×로 줄인 뒤 추가)';return}
+      sel.push(m);
+      el.classList.add('added');
+      const rc=el.querySelector('.rc'); if(rc) rc.textContent+=' · 추가됨';
+      const rh=results.querySelector('.rhint'); if(rh) rh.textContent=`클릭해서 계속 추가 (${sel.length}/8) · 바깥 클릭이나 Esc로 닫는다`;
+      renderAll();
+      search.focus();
     };
   });
 });
 document.addEventListener('click',e=>{if(!results.contains(e.target)&&e.target!==search)results.classList.remove('show')});
+search.addEventListener('keydown',e=>{if(e.key==='Escape'){results.classList.remove('show');search.blur()}});
 
 /* ---------- radar ---------- */
 const tip=$('#tip');
